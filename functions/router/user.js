@@ -1,6 +1,6 @@
 import express from "express";
 import { db, adminApp, storage } from "../util/admin.js"
-import { collection, getDocs, addDoc, updateDoc, doc, getDoc, setDoc} from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, getDoc, setDoc} from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import Busboy from "busboy";
@@ -42,7 +42,6 @@ userRouter.post('/signup', async (req, res)=>{
   if (docSnap.exists()) {
     return res.status(400).json({handle: 'this handle is taken'})
   } else {
-
     const userRef = await createUserWithEmailAndPassword(auth, newUser.email, newUser.password)
     const userId = userRef.user.uid;
     const token = await userRef.user.getIdToken()
@@ -52,7 +51,6 @@ userRouter.post('/signup', async (req, res)=>{
       createdAt: new Date().toISOString(),
       userId: userId
     }
-
     const userDoc = await setDoc(doc(db, "users", newUser.handle), userCredentials);
     const userSnap = await getDoc(doc(db, "users", newUser.handle))
     res.json({
@@ -62,7 +60,49 @@ userRouter.post('/signup', async (req, res)=>{
   }
 });
 
-userRouter.post('/upload', FBAuth, async (req, res)=>{
+// add user details
+userRouter.post('/update', FBAuth, async(req,res)=>{
+  // there will be the input validation for production
+  const docRef = doc(db, "users", req.user.handle);
+  
+  try{
+    const updatedDoc = await updateDoc(docRef, req.body);
+    return res.json({message: 'user details updated sccuessfuly'});
+    // return res.json(updatedDoc);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({error: err.code});
+  }
+});
+
+// get user details
+userRouter.get('/', FBAuth, async(req,res)=>{
+  // there will be the input validation for production
+  let userData = {};
+  const userRef = doc(db, "users", req.user.handle);
+  
+  try{
+    const userSnap = await getDoc(userRef);
+    if (userSnap.exists()) {
+      userData.credencials = userSnap.data();
+      
+      const q = await query(collection(db, "users"), where("userId", "==", req.user.handle));
+      const querySnap = await getDocs(q);
+      userData.likes = [];
+      querySnap.forEach(doc =>{
+        userData.likes.push(doc.data());
+      });
+      return res.json(userData)
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({error: err.code});
+  }
+});
+
+
+// upload avatar image and tie the image to collection "users"
+userRouter.post('/avatar', FBAuth, async (req, res)=>{
   const busboy = new Busboy({ headers: req.headers });
 
   busboy.on("file", (fieldname, file, filename, encoding, mimetype) => {
@@ -94,38 +134,7 @@ userRouter.post('/upload', FBAuth, async (req, res)=>{
         });
     });  
   });
-
-  // busboy.on("finish", () => {
-  //   adminApp
-  //     .storage()
-  //     .bucket()
-  //     .upload(imageToBeUploaded.filepath, {
-  //       resumable: false,
-  //       metadata: {
-  //         metadata: {
-  //           contentType: imageToBeUploaded.mimetype,
-  //           //Generate token to be appended to imageUrl
-  //           // firebaseStorageDownloadTokens: generatedToken,
-  //         },
-  //       },
-  //     })
-  //     .then(() => {
-  //       // Append token to url
-  //       // const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${config.storageBucket}/o/${imageFileName}?alt=media&token=${generatedToken}`;
-  //       const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${process.env.storageBucket}/o/${imageFileName}?alt=media`;
-  //       console.log(imageUrl)
-  //       // return db.doc(`/users/${req.user.handle}`).update({ imageUrl });
-  //     })
-  //     .then(() => {
-  //       return res.json({ message: "image uploaded successfully" });
-  //     })
-  //     .catch((err) => {
-  //       console.error(err);
-  //       return res.status(500).json({ error: "something went wrong" });
-  //     });
-  // });
   busboy.end(req.rawBody);
-
 });
 
 export default userRouter;

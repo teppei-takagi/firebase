@@ -16,6 +16,8 @@ export const FBAuth = async (req, res, next) =>{
     const q = query(collection(db, "users"), where("userId", "==", req.user.uid), limit(1));
     const querySnapshot = await getDocs(q);
     req.user.handle = querySnapshot.docs[0].id;
+    req.user.imageUrl = querySnapshot.docs[0].data().imageUrl;
+
     return next();
   }catch(err){
     console.error('Error happen while verifying token', err);
